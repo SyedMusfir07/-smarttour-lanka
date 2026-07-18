@@ -1,0 +1,215 @@
+// SmartTour Lanka - Prisma Schema
+// PostgreSQL + PostGIS enabled database
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  // PostGIS is enabled via raw SQL in setup script: CREATE EXTENSION IF NOT EXISTS postgis;
+  // pgcrypto is enabled via raw SQL: CREATE EXTENSION IF NOT EXISTS pgcrypto;
+}
+
+// ── ENUMs ──────────────────────────────────────────────────────────────
+
+enum ProviderType {
+  GUIDE
+  SURF_SCHOOL
+  YOGA_STUDIO
+}
+
+enum GuideTier {
+  NATIONAL
+  AREA
+  SITE
+  CHAUFFEUR
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  ONGOING
+  COMPLETED
+  CANCELLED
+}
+
+enum EventType {
+  CULTURAL
+  NIGHTLIFE
+  COMMUNITY
+  SPORTS
+}
+
+enum UserRole {
+  TOURIST
+  PROVIDER
+  ADMIN
+}
+
+// ── 1. Users (Tourists) ───────────────────────────────────────────────
+
+model User {
+  userId      String   @id @default(uuid()) @map("user_id")
+  fullName    String   @map("full_name") @db.VarChar(100)
+  email       String   @unique @db.VarChar(100)
+  phoneNo     String?  @map("phone_no") @db.VarChar(20)
+  currentLat  Decimal? @map("current_lat") @db.Decimal(10, 8)
+  currentLng  Decimal? @map("current_lng") @db.Decimal(11, 8)
+  sosActive   Boolean  @default(false) @map("sos_active")
+  passwordHash String  @map("password_hash") @db.Text
+  role        UserRole @default(TOURIST)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  bookings    Booking[]
+  reviews     Review[]
+
+  @@map("users")
+}
+
+// ── 2. Providers (Unified Vendor Core) ─────────────────────────────────
+
+model Provider {
+  providerId       String       @id @default(uuid()) @map("provider_id")
+  providerType     ProviderType @map("provider_type")
+  sltdaLicenseNo   String?      @unique @map("sltda_license_no") @db.VarChar(50)
+  isVerified       Boolean      @default(false) @map("is_verified")
+  baseLat          Decimal?     @map("base_lat") @db.Decimal(10, 8)
+  baseLng          Decimal?     @map("base_lng") @db.Decimal(11, 8)
+  languagesSpoken  String?      @map("languages_spoken") @db.Text
+  ratingAverage    Decimal      @default(0.0) @map("rating_average") @db.Decimal(2, 1)
+  fullName         String       @map("full_name") @db.VarChar(100)
+  email            String       @unique @db.VarChar(100)
+  passwordHash     String       @map("password_hash") @db.Text
+  profileImageUrl  String?      @map("profile_image_url") @db.Text
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+  description      String?      @db.Text
+  phoneNo          String?      @map("phone_no") @db.VarChar(20)
+  city             String?      @map("city") @db.VarChar(100)
+  district         String?      @map("district") @db.VarChar(100)
+  isAvailable      Boolean      @default(false) @map("is_available")
+
+  guideProfile   GuideProfile?
+  surfProfile    SurfProfile?
+  yogaProfile    YogaProfile?
+  bookings       Booking[]
+  reviews        Review[]
+  liveEvents     LiveEvent[]
+  @@map("providers")
+}
+
+// ── 3. Guide Profiles (1:1, ProviderType = GUIDE) ─────────────────────
+
+model GuideProfile {
+  guideId          String    @id @map("guide_id")
+  tierClassification GuideTier @map("tier_classification")
+  hourlyRate       Decimal   @map("hourly_rate") @db.Decimal(10, 2)
+  halfDayRate      Decimal   @map("half_day_rate") @db.Decimal(10, 2)
+  fullDayRate      Decimal   @map("full_day_rate") @db.Decimal(10, 2)
+  languagePremium  Decimal   @default(0) @map("language_premium") @db.Decimal(10, 2)
+  vehicleProvided  Boolean   @default(false) @map("vehicle_provided")
+  vehicleType      String?   @map("vehicle_type") @db.VarChar(50)
+  maxGroupSize     Int       @default(8) @map("max_group_size")
+
+  provider Provider @relation(fields: [guideId], references: [providerId], onDelete: Cascade)
+
+  @@map("guide_profiles")
+}
+
+// ── 4. Surf Profiles (1:1, ProviderType = SURF_SCHOOL) ────────────────
+
+model SurfProfile {
+  surfId           String   @id @map("surf_id")
+  isaCertified     Boolean  @default(false) @map("isa_certified")
+  sltdaBeachPermit String?  @map("sltda_beach_permit") @db.VarChar(50)
+  instructorCount  Int      @default(1) @map("instructor_count")
+  boardInventory   Int      @map("board_inventory")
+  sessionRate      Decimal  @map("session_rate") @db.Decimal(10, 2)
+  boardRentDaily   Decimal  @map("board_rent_daily") @db.Decimal(10, 2)
+  wetsuitRentDaily Decimal  @default(0) @map("wetsuit_rent_daily") @db.Decimal(10, 2)
+  lessonTypes      String?  @map("lesson_types") @db.Text
+
+  provider Provider @relation(fields: [surfId], references: [providerId], onDelete: Cascade)
+
+  @@map("surf_profiles")
+}
+
+// ── 5. Yoga Profiles (1:1, ProviderType = YOGA_STUDIO) ────────────────
+
+model YogaProfile {
+  yogaId            String   @id @map("yoga_id")
+  stylesOffered     String?  @map("styles_offered") @db.VarChar(255)
+  maxMatCapacity    Int      @map("max_mat_capacity")
+  currentOccupancy  Int      @default(0) @map("current_occupancy")
+  dropInRate        Decimal  @map("drop_in_rate") @db.Decimal(10, 2)
+  package5Rate      Decimal  @map("package_5_rate") @db.Decimal(10, 2)
+  package10Rate     Decimal  @map("package_10_rate") @db.Decimal(10, 2)
+  classDurationMin  Int      @default(90) @map("class_duration_min")
+  matRentalIncluded Boolean  @default(false) @map("mat_rental_included")
+
+  provider Provider @relation(fields: [yogaId], references: [providerId], onDelete: Cascade)
+
+  @@map("yoga_profiles")
+}
+
+// ── 6. Bookings (Transaction Core) ────────────────────────────────────
+
+model Booking {
+  bookingId      String        @id @default(uuid()) @map("booking_id")
+  userId         String        @map("user_id")
+  providerId     String        @map("provider_id")
+  startTime      DateTime      @map("start_time") @db.Timestamptz()
+  durationHours  Decimal       @map("duration_hours") @db.Decimal(4, 2)
+  addOnsTotal    Decimal       @default(0) @map("add_ons_total") @db.Decimal(10, 2)
+  netAmount      Decimal       @map("net_amount") @db.Decimal(10, 2)
+  status         BookingStatus @default(PENDING)
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  user     User     @relation(fields: [userId], references: [userId])
+  provider Provider @relation(fields: [providerId], references: [providerId])
+  review   Review?
+
+  @@unique([providerId, startTime], name: "unique_booking_slot")
+  @@map("bookings")
+}
+
+// ── 7. Live Events (Geo-fenced Event Feed) ────────────────────────────
+
+model LiveEvent {
+  eventId     String    @id @default(uuid()) @map("event_id")
+  eventTitle  String    @map("event_title") @db.VarChar(150)
+  typeTag     EventType @map("type_tag")
+  eventLat    Decimal   @map("event_lat") @db.Decimal(10, 8)
+  eventLng    Decimal   @map("event_lng") @db.Decimal(11, 8)
+  entryFee    Decimal   @default(0) @map("entry_fee") @db.Decimal(10, 2)
+  eventStart  DateTime  @map("event_start") @db.Timestamptz()
+  isVerified  Boolean   @default(false) @map("is_verified")
+  organizerId String?   @map("organizer_id")
+  description String?   @db.Text
+  imageUrl    String?   @map("image_url") @db.Text
+
+  organizer Provider? @relation(fields: [organizerId], references: [providerId])
+  @@map("live_events")
+}
+
+// ── 8. Reviews (Verified-Purchase Only) ───────────────────────────────
+
+model Review {
+  reviewId   String @id @default(uuid()) @map("review_id")
+  bookingId  String @unique @map("booking_id")
+  userId     String @map("user_id")
+  providerId String @map("provider_id")
+  rating     Int    @map("rating")
+  reviewText String @map("review_text") @db.Text
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  booking  Booking  @relation(fields: [bookingId], references: [bookingId])
+  user     User     @relation(fields: [userId], references: [userId])
+  provider Provider @relation(fields: [providerId], references: [providerId])
+
+  @@map("reviews")
+}

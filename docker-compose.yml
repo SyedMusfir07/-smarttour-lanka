@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: smarttour-db
+    environment:
+      POSTGRES_DB: smarttour_lanka
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: smarttour-api
+    environment:
+      PORT: 4000
+      DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/smarttour_lanka"
+      JWT_SECRET: "smarttour-lanka-jwt-secret-2026"
+      JWT_REFRESH_SECRET: "smarttour-lanka-refresh-secret-2026"
+      NODE_ENV: "development"
+      FRONTEND_URL: "http://localhost:3000"
+    ports:
+      - "4000:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >
+      sh -c "npx prisma generate &&
+             npx prisma db push &&
+             npx tsx src/seed.ts &&
+             npx tsx src/index.ts"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: smarttour-web
+    environment:
+      NEXT_PUBLIC_API_URL: "http://localhost:4000"
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
